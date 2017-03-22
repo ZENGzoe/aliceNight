@@ -1,0 +1,624 @@
+<meta http-equiv="Content-Type" content="text/html;charset=UTF-8">
+<style>*{margin:0;padding:0;}</style>
+<script src="https://plogin.m.jd.com/st_new/js/zepto.min.js"></script>
+<script src="js/hammer.min.js"></script>
+<script src="js/fx.js"></script>
+<script>/**
+ * MobileWeb 通用功能助手，包含常用的 UA 判断、页面适配、search 参数转 键值对。
+ * 该 JS 应在 head 中尽可能早的引入，减少重绘。
+ *
+ * fixScreen 方法根据两种情况适配，该方法自动执行。
+ *      1. 定宽： 对应 meta 标签写法 --
+ *          该方法会提取 width 值，主动添加 scale 相关属性值。
+ *          注意： 如果 meta 标签中指定了 initial-scale， 该方法将不做处理（即不执行）。
+ *      2. REM: 不用写 meta 标签，该方法根据 dpr 自动生成，并在 html 标签中加上 data-dpr 和 font-size 两个属性值。
+ *          该方法约束：IOS 系统大 dpr = 3，其它系统 dpr = 1，页面每 dpr 大宽度（即页面宽度/dpr） = 750，REM 换算比值为 16。
+ *          对应 css 开发，任何弹性尺寸均使用 rem 单位，rem 默认宽度为 视觉稿宽度 / 16;
+ *              scss 中 $ppr(pixel per rem) 变量写法 -- $ppr: 750px/16/1rem;
+ *                      元素尺寸写法 -- html { font-size: $ppr*1rem; } body { width: 750px/$ppr; }。
+
+ */
+    window.mobileUtil = (function(win, doc) {
+        var UA = navigator.userAgent,
+                isAndroid = /android|adr/gi.test(UA),
+                isIos = /iphone|ipod|ipad/gi.test(UA) && !isAndroid, // 据说某些国产机的UA会同时包含 android iphone 字符
+                isMobile = isAndroid || isIos;  // 粗略的判断
+
+        return {
+            isAndroid: isAndroid,
+            isIos: isIos,
+            isMobile: isMobile,
+
+            isNewsApp: /NewsApp\/[\d\.]+/gi.test(UA),
+            isWeixin: /MicroMessenger/gi.test(UA),
+            isQQ: /QQ\/\d/gi.test(UA),
+            isYixin: /YiXin/gi.test(UA),
+            isWeibo: /Weibo/gi.test(UA),
+            isTXWeibo: /T(?:X|encent)MicroBlog/gi.test(UA),
+
+            tapEvent: isMobile ? 'tap' : 'click',
+
+            /**
+             * 缩放页面
+             */
+            fixScreen: function() {
+                var metaEl = doc.querySelector('meta[name="viewport"]'),
+                        metaCtt = metaEl ? metaEl.content : '',
+                        matchScale = metaCtt.match(/initial\-scale=([\d\.]+)/),
+                        matchWidth = metaCtt.match(/width=([^,\s]+)/);
+
+                if ( !metaEl ) { // REM
+                    var docEl = doc.documentElement,
+                            maxwidth = docEl.dataset.mw || 750, // 每 dpr 大页面宽度
+                            dpr = isIos ? Math.min(win.devicePixelRatio, 3) : 1,
+                            scale = 1 / dpr,
+                            tid;
+
+                    docEl.removeAttribute('data-mw');
+                    docEl.dataset.dpr = dpr;
+                    metaEl = doc.createElement('meta');
+                    metaEl.name = 'viewport';
+                    metaEl.content = fillScale(scale);
+                    docEl.firstElementChild.appendChild(metaEl);
+
+                    var refreshRem = function() {
+                        var width = docEl.getBoundingClientRect().width;
+                        if (width / dpr > maxwidth) {
+                            width = maxwidth * dpr;
+                        }
+                        var rem = width / 16;
+                        docEl.style.fontSize = rem + 'px';
+                        if(window.location.href.indexOf('/visualediting/visualEditing.html?veBean.pageInstanceId')>-1){
+                            docEl.style.fontSize = '20px';
+                        }
+                    };
+
+                    win.addEventListener('resize', function() {
+                        clearTimeout(tid);
+                        tid = setTimeout(refreshRem, 300);
+                    }, false);
+                    win.addEventListener('pageshow', function(e) {
+                        if (e.persisted) {
+                            clearTimeout(tid);
+                            tid = setTimeout(refreshRem, 300);
+                        }
+                    }, false);
+
+                    refreshRem();
+                } else if ( isMobile && !matchScale && ( matchWidth && matchWidth[1] != 'device-width' ) ) { // 定宽
+                    var width = parseInt(matchWidth[1]),
+                            iw = win.innerWidth || width,
+                            ow = win.outerWidth || iw,
+                            sw = win.screen.width || iw,
+                            saw = win.screen.availWidth || iw,
+                            ih = win.innerHeight || width,
+                            oh = win.outerHeight || ih,
+                            ish = win.screen.height || ih,
+                            sah = win.screen.availHeight || ih,
+                            w = Math.min(iw,ow,sw,saw,ih,oh,ish,sah),
+                            scale = w / width;
+
+                    if ( scale < 1 ) {
+                        metaEl.content = metaCtt + ',' + fillScale(scale);
+                    }
+                }
+                else{
+                    //tmp process
+                    var docEl = doc.documentElement,
+                            maxwidth = docEl.dataset.mw || 750, // 每 dpr 大页面宽度
+                            dpr = isIos ? Math.min(win.devicePixelRatio, 3) : 1,
+                            scale = 1 / dpr,
+                            tid;
+
+                    docEl.removeAttribute('data-mw');
+                    docEl.dataset.dpr = dpr;
+                    metaEl = doc.querySelector('meta[name="viewport"]');
+                    //metaEl.content = fillScale(scale);
+                    var tArray = metaEl.content.split(',');
+                    //metaEl.content = tArray[0]+ ',' + fillScale(scale) + ',' + tArray[3];
+
+                    var refreshRem = function() {
+                        var width = docEl.getBoundingClientRect().width;
+                        if (width / dpr > maxwidth) {
+                            width = maxwidth * dpr;
+                        }
+                        var rem = width / 16;
+                        docEl.style.fontSize = rem + 'px';
+                        if(window.location.href.indexOf('/visualediting/visualEditing.html?veBean.pageInstanceId')>-1){
+                            docEl.style.fontSize = '20px';
+                        }
+                    };
+
+                    win.addEventListener('resize', function() {
+                        clearTimeout(tid);
+                        tid = setTimeout(refreshRem, 300);
+                    }, false);
+                    win.addEventListener('pageshow', function(e) {
+                        if (e.persisted) {
+                            clearTimeout(tid);
+                            tid = setTimeout(refreshRem, 300);
+                        }
+                    }, false);
+
+                    refreshRem();
+                }
+
+                function fillScale(scale) {
+                    return 'initial-scale=' + scale + ',maximum-scale=' + scale + ',minimum-scale=' + scale;
+                }
+            },
+
+            /**
+             * 转href参数成键值对
+             * @param href {string} 指定的href，默认为当前页href
+             * @returns {object} 键值对
+             */
+            getSearch: function(href) {
+                href = href || win.location.search;
+                var data = {},reg = new RegExp( "([^?=&]+)(=([^&]*))?", "g" );
+                href && href.replace(reg,function( $0, $1, $2, $3 ){
+                    data[ $1 ] = $3;
+                });
+                return data;
+            }
+        };
+    })(window, document);
+    // 默认直接适配页面
+    mobileUtil.fixScreen();
+</script>
+<link rel="stylesheet" href="css/style.css">
+<script>
+
+</script>
+
+<div class="ali">
+    <div class="ali_ct">
+        <!-- 加载页 -->
+        <section class="ali_pg ali_loading" id="aliLoading">
+            <p class="pic" ><img src="img/加载背景.jpg" alt=""/></p>
+            <div class="ali_loading_ct pa">
+                <div class="pro" id="progress">
+                    <span class="run pa" id="run"></span>
+                </div>
+               
+                <p class="num" id="loadingNum">0%</p>
+            </div>
+        </section>
+        <!-- 首页 -->
+        <section class="ali_pg ali_cv J_unlock" id="unlockPage">
+            <div class="ali_cv_ct pa">
+                <hgroup>
+                    <h1 class="icon">春雷奇妙夜</h1>
+                    <h2 class="icon">爱丽丝梦幻页</h2>
+                    <h3 class="icon pa">开启你的奇幻购物之旅</h3>
+                </hgroup>
+                <div class="main">
+                    <div class="girl">
+                        <span class="hd icon pa"></span>
+                        <span class="bd icon pa"></span>
+                        <span class="hr1 pa icon"></span>
+                        <span class="hr2 pa icon"></span>
+                        <span class="hr3 pa icon"></span>
+                        <span class="hr4 pa icon"></span>
+                        <span class="fl pa icon"></span>
+                    </div>
+                    <div class="rab pa">
+                        <span class="bd icon pa"></span>
+                        <span class="ear1 pa icon"></span>
+                        <span class="ear2 pa icon"></span>
+                        <span class="tail pa icon"></span>
+                    </div>
+                </div>
+                <div class="key pa icon" id="unlockwrap">
+                    <span class="masks pa J_keyMask"></span>
+                    <a href="javascript:;" class="btn pa icon" id="unlockBtn"></a>
+                    <p class="tip pa">右滑追赶白兔<span>&gt;&gt;</span></p>
+                </div>
+                <div class="flower pa">
+                    <span class="fl1 pa icon"></span>
+                    <span class="fl2 pa icon"></span>
+                    <span class="fl3 pa icon"></span>
+                    <span class="fl4 pa icon"></span>
+                    <span class="fl5 pa icon"></span>
+                    <span class="fl6 pa icon"></span>
+                    <span class="fl7 pa icon"></span>
+                    <span class="fl8 pa icon"></span>
+                </div>
+                 <span class="matte"></span>
+            </div>
+        </section>
+        <!-- 追赶兔子 -->
+        <section class="ali_pg ali_chs J_chase">
+            <div class="container pa">
+                        <div class="ali_chs_con pa">
+                              <div class="ali_chs_ct pa">
+                                     <a href="javascript:;" class="btn pa">追上去<span class="pa icon2"></span></a>
+                                     <a  class="haier pa"><img src="img/10.png" alt="海尔国民好家电"></a>
+                                     <a  class="meide pa"><img src="img/09.png" alt="meide海尔开春奇妙夜"></a>
+                              
+                             </div>
+                      </div>
+            <div class="tt icon2 pa">现实与梦境边界之洞</div>
+            </div>
+                    </section>
+                    <!-- 洞中 -->
+                    <section class="ali_hl ali_pg J_hole">
+                        <div class="ali_hl_ct" id="hole">
+                            <!-- 跌入仙境 -->
+                            <div class="wrap wrap1">
+                                <div class="wrap_box">
+                                    <section class="ali_hl_col fal J_fal"><div class="bg1"></div>
+                                        <div class="fal_ct">
+                                            <div class="goods">
+                                                <div class="goods_item active radio">
+                                                    <div class="wd">
+                                                        <h2>收音机-影音会场</h2>
+                                                        <p class="test">哎，竟然有个收音机~不管到哪，有音乐陪着，应该都不会孤独吧？</p>
+                                                    </div>
+                                                    <div class="pic">
+                                                        <img src="img/收音机.png" alt="收音机">
+                                                        <p class="go pa">去看看</p>
+                                                    </div>
+                                                    <a class="goto pa"></a>
+                                                </div>
+                                                <div class="goods_item icebox">
+                                                    <div class="wd">
+                                                        <h2>冰箱-大家电会场</h2>
+                                                        <p class="test">这是谁家的冰箱…呀，里面竟然还有好多小冰箱……</p>
+                                                    </div>
+                                                    <div class="pic">
+                                                        <img src="img/冰箱.png" alt="冰箱">
+                                                        <p class="go pa">去看看</p>
+                                                    </div>
+                                                    <a class="goto pa"></a>
+                                                </div>
+                                                <div class="goods_item break">
+                                                    <div class="wd">
+                                                        <h2>厨具-厨电+厨卫会场</h2>
+                                                        <p class="test">森林里是不是好多好吃的……不过还是自己做的饭最好吃呢。</p>
+                                                    </div>
+                                                    <div class="pic">
+                                                        <img src="img/厨具.png" alt="厨具">
+                                                        <p class="go pa">去看看</p>
+                                                    </div>
+                                                    <a class="goto pa"></a>
+                                                </div>
+
+                                            </div>
+                                            <div class="main">
+                                                <a href="javascript:;" class="pa icon J_fal_gds rad"><span class="bln active"></span></a>
+                                                <a href="javascript:;" class="pa icon J_fal_gds ref">
+                                                    <span class="pa icon lg"></span>
+                                                    <span class="bln"></span>
+                                                </a>
+                                                <div class="alics pa">
+                                                    <span class="alic pa icon"></span>
+                                                    <span class="hr icon pa"></span>
+                                                </div>
+                                                <a href="javascript:;" class="pa icon J_fal_gds brk">
+                                                    <span class="bk1 pa icon"></span>
+                                                    <span class="bk2 pa icon"></span>
+                                                    <span class="bln"></span>
+                                                </a>
+                                                <div class="tt icon pa">跌入仙境的第一站</div>
+                                            </div>
+                                        </div>
+                                    </section>
+                                    <div class="back"><img src="http://h5.m.jd.com/dev/44Rr6xHtwPdmyvRf4bRRAVfCNwRj/pages/34753/img/back.png" /></div>
+                                </div>
+                            </div>
+                            <!-- 红王后-->
+                            <div class="wrap wrap2 hide">
+                                <div class="wrap_box">
+                                    <section class="ali_hl_col rqn J_rqn">
+                                        <div class="center">
+                                            <div class="bg"></div>
+                                            <div class="bg2 pa icon1"></div>
+                                            <div class="rqn_ct pa">
+                                                <div class="goods">
+                                                    <div class="goods_item active outside">
+                                                        <div class="wd">
+                                                            <h2>火烈鸟-户外运动会场</h2>
+                                                            <p>伐开心，要运动~累到失去了砍脑袋的力气，整个世界都变得美好了呢~</p>
+                                                        </div>
+                                                        <div class="pic">
+                                                            <img src="img/户外运动.png" alt="户外运动">
+                                                            <p class="go pa">去看看</p>
+                                                        </div>
+                                                        <a class="goto pa"></a>
+                                                    </div>
+                                                    <div class="goods_item shoe">
+                                                        <div class="wd">
+                                                            <h2>鞋子-鞋靴会场</h2>
+                                                            <p>没抓到爱丽丝真是看什么都不顺眼！鞋子的颜色和款式也不够称心，再去买五双！</p>
+                                                        </div>
+                                                        <div class="pic">
+                                                            <img src="img/鞋子.png" alt="鞋子">
+                                                            <p class="go pa">去看看</p>
+                                                        </div>
+                                                        <a class="goto pa"></a>
+                                                    </div>
+                                                    <div class="goods_item bag">
+                                                        <div class="wd">
+                                                            <h2>奢侈品/包包会场</h2>
+                                                            <p>如何平息美人的怒气？这个扑克士兵呈上了森林最新款包包，可以啊小伙子~</p>
+                                                        </div>
+                                                        <div class="pic">
+                                                            <img src="img/奢侈品.png" alt="奢侈品">
+                                                            <p class="go pa">去看看</p>
+                                                        </div>
+                                                        <a class="goto pa"></a>
+                                                    </div>
+                                                    <div class="goods_item pet">
+                                                        <div class="wd">
+                                                            <h2>柴郡猫-宠物会场</h2>
+                                                            <p>以卖萌为己任，除了哄你给我铲屎就是暗示你该给我买好吃的啦</p>
+                                                        </div>
+                                                        <div class="pic">
+                                                            <img src="img/宠物.png" alt="宠物">
+                                                            <p class="go pa">去看看</p>
+                                                        </div>
+                                                        <a class="goto pa"></a>
+                                                    </div>
+                                                </div>
+                                                <div class="main">
+                                                    <span class="al pa icon2"></span>
+                                                    <div class="qn pa">
+                                                        <div class="bd icon pa"></div>
+                                                        <a class="hd icon pa J_rqn_gds active" href="javascript:;"><span class="bln active"></span></a>
+                                                        <div class="fr pa">
+                                                            <span class="b icon pa"></span>
+                                                            <span class="s icon pa"></span>
+                                                        </div>
+                                                        <div class="sk pa">
+                                                            <span class="b pa icon"></span>
+                                                            <a href="javascript:;" class="l pa icon J_rqn_gds"><span class="bln"></span></a>
+                                                            <span class="f pa icon"></span>
+                                                        </div>
+                                                    </div>
+                                                    <div class="beg pa">
+                                                        <a href="javascript:;" class="J_rqn_gds pa">
+                                                            <span class="red icon pa"></span>
+                                                            <span class="pp pa icon"></span>
+                                                            <span class="hd icon pa"></span>
+                                                            <span class="bln"></span>
+                                                        </a>
+                                                    </div>
+                                                    <a class="cat pa J_rqn_gds" href="javascript:;">
+                                                        <span class="tail pa icon"></span>
+                                                        <span class="eye1 pa icon"></span>
+                                                        <span class="eye2 pa icon"></span>
+                                                        <span class="nose pa icon"></span>
+                                                        <span class="bln"></span>
+                                                    </a>
+                                                </div>
+                                            </div>
+                                            <div class="pk pa icon2"></div>
+                                        </div>
+                                        <div class="tt icon pa">误入红皇后秘密花园</div>
+                                    </section>
+                                    <div class="back"><img src="http://h5.m.jd.com/dev/44Rr6xHtwPdmyvRf4bRRAVfCNwRj/pages/34753/img/back.png" /></div>
+                                </div>
+                            </div>
+                            <!-- 白皇后 -->
+                            <div class="wrap wrap3 hide">
+                                <div class="wrap_box">
+                                    <section class="ali_hl_col wqn J_wqn">
+                                        <div class="center">
+                                            <div class="wqn_ct">
+                                                <div class="goods">
+                                                    <div class="goods_item make">
+                                                        <div class="wd">
+                                                            <h2>药水瓶-美妆会场</h2>
+                                                            <p>小爱，女人一定要好好爱自己，才会越来越美腻哦~</p>
+                                                        </div>
+                                                        <div class="pic">
+                                                            <img src="img/美妆.png" alt="美妆">
+                                                            <p class="go pa">去看看</p>
+                                                        </div>
+                                                        <a class="goto pa"></a>
+                                                    </div>
+                                                    <div class="goods_item active kouhong">
+                                                        <div class="wd">
+                                                            <h2>口红-个护会场</h2>
+                                                            <p>新配置的护肤药水就要新鲜出炉了，各位女王大人也给自己选些带走吧~</p>
+                                                        </div>
+                                                        <div class="pic">
+                                                            <img src="img/药水瓶.png" alt="药水瓶">
+                                                            <p class="go pa">去看看</p>
+                                                        </div>
+                                                        <a class="goto pa"></a>
+                                                    </div>
+                                                    <div class="goods_item skirt">
+                                                        <div class="wd">
+                                                            <h2>衣服-女装会场</h2>
+                                                            <p>不要以为皇后的衣服就很多哦~衣柜里永远少件衣服对所有女人都适用。</p>
+                                                        </div>
+                                                        <div class="pic">
+                                                            <img src="img/裙子.png" alt="裙子">
+                                                            <p class="go pa">去看看</p>
+                                                        </div>
+                                                        <a class="goto pa"></a>
+                                                    </div>
+                                                </div>
+                                                <div class="main">
+                                                    <a class="pa bot J_wqn_gds" href="javascript:;">
+                                                        <span class="bub pa icon"></span>
+                                                        <span class="bd pa icon"></span>
+                                                        <span class="bln"></span>
+                                                    </a>
+                                                    <div class="smog pa icon"></div>
+                                                    <div class="pa qn">
+                                                        <div class="pa icon hd">
+                                                        </div>
+                                                        <a href="javascript:;" class="J_wqn_gds pa hand icon"><span class="bln active"></span></a>
+                                                        <div class="mir pa icon"><span class="lg pa icon"></span></div>
+                                                        <a href="javascript:;" class="J_wqn_gds bd sk icon pa"><span class="bln"></span></a>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="grey pa"><span class="pa icon1"></span></div>
+                                        </div>
+                                        <div class="tt icon pa">白皇后的城堡</div>
+                                    </section>
+                                    <div class="back"><img src="http://h5.m.jd.com/dev/44Rr6xHtwPdmyvRf4bRRAVfCNwRj/pages/34753/img/back.png" /></div>
+                                </div>
+                            </div>
+                            <!-- 疯帽子 -->
+                            <div class="wrap wrap4 hide">
+                                <div class="wrap_box">
+                                    <section class="ali_hl_col hat J_hat">
+                                        <div class="hat_ct">
+                                            <div class="goods">
+                                                <div class="goods_item active cloth">
+                                                    <div class="wd">
+                                                        <h2>疯帽子-男装会场</h2>
+                                                        <p>茶会也要穿的帅帅的~其实每个男银都是潜力股呢~</p>
+                                                    </div>
+                                                    <div class="pic">
+                                                        <img src="img/男装.png" alt="男装">
+                                                        <p class="go pa">去看看</p>
+                                                    </div>
+                                                    <a class="goto pa"></a>
+                                                </div>
+                                                <div class="goods_item caomei">
+                                                    <div class="wd">
+                                                        <h2>草莓酱-食品会场</h2>
+                                                        <p>茶会怎么能少了好吃的？都来存存货，叫上好朋友一起聚聚吧~</p>
+                                                    </div>
+                                                    <div class="pic">
+                                                        <img src="img/草莓.png" alt="草莓">
+                                                        <p class="go pa">去看看</p>
+                                                    </div>
+                                                    <a class="goto pa"></a>
+                                                </div>
+                                                <div class="goods_item clock">
+                                                    <div class="wd">
+                                                        <h2>手表-钟表会场</h2>
+                                                        <p>一个有时间观念的兔子告诉我们：手表是个好东西，我建议你也败一个～</p>
+                                                    </div>
+                                                    <div class="pic">
+                                                        <img src="img/钟表.png" alt="钟表" class="clock">
+                                                        <p class="go pa">去看看</p>
+                                                    </div>
+                                                    <a class="goto pa"></a>
+                                                </div>
+                                            </div>
+                                            <div class="main">
+                                                <div class="man pa">
+                                                    <a href="javascript:;" class="pa icon J_hat_gds bd"><span class="bln active"></span></a>
+                                                    <span class="pa icon leg"></span>
+                                                </div>
+                                                <a class="strb pa J_hat_gds" href="javascript:;">
+                                                    <span class="bd pa icon"></span>
+                                                    <span class="pa icon lid"></span>
+                                                    <span class="str pa icon"></span>
+                                                    <span class="zhi pa icon"></span>
+                                                    <span class="bln"></span>
+                                                </a>
+                                                <div class="girl pa">
+                                                    <span class="pa icon hd"></span>
+                                                    <span class="pa icon hand"></span>
+                                                    <span class="pa icon bd"></span>
+                                                </div>
+                                                <div class="rab pa">
+                                                    <span class="ear1 pa icon"></span>
+                                                    <span class="ear2 pa icon"></span>
+                                                    <span class="pa icon bd"></span>
+                                                    <a href="javascript:;" class="lh pa icon J_hat_gds"><span class="bln"></span></a>
+                                                    <span class="rh pa icon"></span>
+                                                </div>
+                                                <div class="tt icon pa">疯帽子的茶会</div>
+                                            </div>
+                                        </div>
+                                    </section>
+                                    <div class="back"><img src="http://h5.m.jd.com/dev/44Rr6xHtwPdmyvRf4bRRAVfCNwRj/pages/34753/img/back.png" /></div>
+                                </div>
+                            </div>
+                            <!-- 下一个主题 -->
+                            <div class="wrap wrap5 hide">
+                                <div class="wrap_box">
+                                    <section class="ali_hl_col nt">
+                                        <div class="nt_ct pa">
+                                            <div class="lt">
+                                                <span class="lt1 pa icon"></span>
+                                                <span class="lt2 pa icon"></span>
+                                                <span class="lt3 pa icon"></span>
+                                                <span class="lt4 pa icon"></span>
+                                                <span class="lt5 pa icon"></span>
+                                                <span class="lt6 pa icon"></span>
+                                                <span class="lt7 pa icon"></span>
+                                                <span class="lt8 pa icon"></span>
+                                            </div>
+                                            <div class="wan pa">
+                                                <span class="wd icon pa"></span>
+                                                <span class="lf1 icon pa"></span>
+                                                <span class="lf2 icon pa"></span>
+                                            </div>
+                                            <a href="javascript:;" class="all" id="showAll">《春雷奇妙夜》全集</a>
+                                            <a class="gomain" >前往春雷主会场</a>
+                                        </div>
+                                    </section>
+                                    <div class="back"><img src="http://h5.m.jd.com/dev/44Rr6xHtwPdmyvRf4bRRAVfCNwRj/pages/34753/img/back.png" /></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="anchor J_anchor">
+                            <p><span class="active"></span></p>
+                            <p><span></span></p>
+                            <p><span></span></p>
+                            <p><span></span></p>
+                            <p><span></span></p>
+                        </div>
+                    </section>
+                    <!-- 全夜集锦 -->
+                    <section class="ali_pg ali_mask">
+                        <div class="ali_mask_ct pa">
+                            <h1>春雷奇妙夜-全夜集锦</h1>
+                            <a href="javascript:;" class="close pa">关闭</a>
+                            <div class="con">
+                                <div class="item">
+                                    <p>2月22号夜</p>
+                                    <div class="de">
+                                        <img src="img/博物馆2.png" alt="博物馆惊魂夜" />
+                                       <p><a  class="btn museum">精彩回顾</a></p>
+                                    </div>
+                                </div>
+                                <div class="item">
+                                    <p>2月28号夜</p>
+                                    <div class="de">
+                                        <img src="img/安徒生2.png" alt="安徒生童话夜" />
+                                        <p><a class="btn andersen">精彩回顾</a></p>
+                                    </div>
+                                </div>
+                                <div class="item">
+                                    <p>3月7号夜</p>
+                                    <div class="de">
+                                        <img src="img/爱丽丝3.jpg" alt="爱丽丝梦幻夜" />
+                                        <p><a href="javascript:;" class="btn thisnigth">回看本夜</a></p>
+                                    </div>
+                                </div>
+                                <div class="item">
+                                    <p>3月14号夜</p>
+                                    <div class="de">
+                                        <img src="img/古才子3.jpg" alt="古才子穿越夜" />
+                                        <p>敬请期待</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <span class="line"></span>
+                        </div>
+                    </section>
+            </div>
+</div>
+
+<!--横竖屏显示-->
+<div class="mask lock flex flex-v flex-align-center flex-pack-center">
+    <div class="lock-bg"></div>
+    <p class="lock-txt">为了更好的体验，请使用竖屏浏览</p>
+</div>
+<script src="https://h5.m.jd.com/dev/44Rr6xHtwPdmyvRf4bRRAVfCNwRj/pages/34753/js/pxloader-all.min.js"></script>
+<script src="https://h5.m.jd.com/dev/44Rr6xHtwPdmyvRf4bRRAVfCNwRj/pages/34753/js/pxloader-images.min.js"></script>
+<script src="https://wl.jd.com/unify.min.js"></script>
+<script type="text/javascript" src="https://storage.360buyimg.com/babel/00016311/33826/production/dev/share.js?t=20170222142937"></script>
+<script src="js/index.js"></script>
